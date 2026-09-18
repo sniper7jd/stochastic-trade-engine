@@ -19,7 +19,7 @@ start_date = end_date - timedelta(days=10)
 
 # Create the request for daily bars for Apple (AAPL)
 request_params = StockBarsRequest(
-    symbol_or_symbols="AAPL",
+    symbol_or_symbols="V",
     timeframe=TimeFrame.Day,
     start=start_date,
     end=end_date
