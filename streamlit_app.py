@@ -34,12 +34,39 @@ def get_credentials() -> tuple[str | None, str | None]:
     return _secret("ALPACA_API_KEY"), _secret("ALPACA_SECRET_KEY")
 
 
+def resolve_data_feed(name: str | None = None):
+    """Pick an equity data feed. Default IEX (free); SIP only if opted in.
+
+    Free/basic Alpaca keys cannot query recent SIP. Set ALPACA_DATA_FEED to
+    ``sip`` or ``delayed_sip`` only if your subscription allows it.
+    """
+    from alpaca.data.enums import DataFeed
+
+    raw = (name or _secret("ALPACA_DATA_FEED") or "iex").strip().lower()
+    aliases = {
+        "iex": ("iex", DataFeed.IEX),
+        "sip": ("sip", DataFeed.SIP),
+        "delayed_sip": ("delayed_sip", DataFeed.DELAYED_SIP),
+        "delayed": ("delayed_sip", DataFeed.DELAYED_SIP),
+        "otc": ("otc", DataFeed.OTC),
+    }
+    if raw not in aliases:
+        raise ValueError(
+            f"Unknown ALPACA_DATA_FEED={raw!r}. Use iex, sip, delayed_sip, or otc."
+        )
+    canonical, feed = aliases[raw]
+    return feed, canonical
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_daily_bars(symbol: str, days: int, api_key: str, secret_key: str) -> pd.DataFrame:
+def fetch_daily_bars(
+    symbol: str, days: int, api_key: str, secret_key: str, feed_name: str = "iex"
+) -> pd.DataFrame:
     from alpaca.data.historical import StockHistoricalDataClient
     from alpaca.data.requests import StockBarsRequest
     from alpaca.data.timeframe import TimeFrame
 
+    feed, _ = resolve_data_feed(feed_name)
     client = StockHistoricalDataClient(api_key, secret_key)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
@@ -48,6 +75,7 @@ def fetch_daily_bars(symbol: str, days: int, api_key: str, secret_key: str) -> p
         timeframe=TimeFrame.Day,
         start=start_date,
         end=end_date,
+        feed=feed,
     )
     bars = client.get_stock_bars(request).df
     return bars.xs(symbol, level="symbol")
@@ -166,13 +194,17 @@ def taylor_demo() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.nd
 
 
 def run_options_scanner(
-    symbols: list[str], api_key: str, secret_key: str
+    symbols: list[str],
+    api_key: str,
+    secret_key: str,
+    feed_name: str = "iex",
 ) -> tuple[pd.DataFrame, float]:
-    """Cheap OTM options scan (scanner.py)."""
+    """Cheap OTM options scan (scanner.py). Underlying quotes use IEX by default."""
     from alpaca.data.historical.option import OptionHistoricalDataClient
     from alpaca.data.historical.stock import StockHistoricalDataClient
     from alpaca.data.requests import OptionChainRequest, StockLatestQuoteRequest
 
+    feed, _ = resolve_data_feed(feed_name)
     options_client = OptionHistoricalDataClient(api_key, secret_key)
     stock_client = StockHistoricalDataClient(api_key, secret_key)
     today = datetime.now()
@@ -181,7 +213,7 @@ def run_options_scanner(
     for symbol in symbols:
         try:
             latest_quote = stock_client.get_stock_latest_quote(
-                StockLatestQuoteRequest(symbol_or_symbols=symbol)
+                StockLatestQuoteRequest(symbol_or_symbols=symbol, feed=feed)
             )
             current_price = latest_quote[symbol].ask_price
             chain = options_client.get_option_chain(
@@ -246,13 +278,19 @@ def main() -> None:
     api_key, secret_key = get_credentials()
     has_creds = bool(api_key and secret_key)
 
+    _, feed_name = resolve_data_feed()
+
     if has_creds:
-        st.sidebar.success("Alpaca credentials detected")
+        st.sidebar.success(f"Alpaca credentials detected · feed `{feed_name}`")
     else:
         st.sidebar.warning(
             "Add `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in Streamlit Secrets "
             "or a local `.env` file. Taylor demo works without keys."
         )
+    st.sidebar.caption(
+        "Bars default to **IEX** (free). Set `ALPACA_DATA_FEED=sip` only with a "
+        "paid SIP subscription."
+    )
 
     symbol = st.sidebar.text_input("Symbol", value="SPY").strip().upper() or "SPY"
     lookback_days = st.sidebar.slider("Lookback (days)", 90, 730, 365, step=30)
@@ -292,6 +330,9 @@ def main() -> None:
 
             **Hosting:** Streamlit Community Cloud — set the main file to `streamlit_app.py`.
             Live order bots stay CLI-only so a public demo cannot submit trades.
+
+            **Data feed:** equity bars/quotes use **IEX** by default (works on free Alpaca).
+            Optional secret `ALPACA_DATA_FEED=sip` (or `delayed_sip`) only if your plan allows it.
             """
         )
         if not has_creds:
@@ -305,9 +346,11 @@ def main() -> None:
         if not has_creds:
             st.warning("Alpaca credentials required.")
         elif st.button("Run equity curve", key="btn_equity"):
-            with st.spinner(f"Fetching {symbol} bars…"):
+            with st.spinner(f"Fetching {symbol} bars ({feed_name})…"):
                 try:
-                    bars = fetch_daily_bars(symbol, lookback_days, api_key, secret_key)
+                    bars = fetch_daily_bars(
+                        symbol, lookback_days, api_key, secret_key, feed_name
+                    )
                     buy_hold, algo, z_scores = run_zscore_equity(
                         bars["close"], window=z_window, threshold=z_threshold
                     )
@@ -347,9 +390,11 @@ def main() -> None:
         if not has_creds:
             st.warning("Alpaca credentials required.")
         elif st.button("Run backtest", key="btn_bt"):
-            with st.spinner("Running friction-aware backtest…"):
+            with st.spinner(f"Running friction-aware backtest ({feed_name})…"):
                 try:
-                    bars = fetch_daily_bars(symbol, lookback_days, api_key, secret_key)
+                    bars = fetch_daily_bars(
+                        symbol, lookback_days, api_key, secret_key, feed_name
+                    )
                     result = run_slippage_backtest(
                         bars["close"],
                         bars["volume"],
@@ -392,10 +437,10 @@ def main() -> None:
         if not has_creds:
             st.warning("Alpaca credentials required.")
         elif st.button("Run Monte Carlo", key="btn_gbm"):
-            with st.spinner("Simulating paths…"):
+            with st.spinner(f"Simulating paths ({feed_name})…"):
                 try:
                     bars = fetch_daily_bars(
-                        gbm_symbol, lookback_days, api_key, secret_key
+                        gbm_symbol, lookback_days, api_key, secret_key, feed_name
                     )
                     strike_arg = float(strike_override) if strike_override > 0 else None
                     result = run_gbm_monte_carlo(
@@ -471,7 +516,9 @@ def main() -> None:
             symbols = [s.strip().upper() for s in scan_input.split(",") if s.strip()]
             with st.spinner("Scanning option chains…"):
                 try:
-                    df, total = run_options_scanner(symbols, api_key, secret_key)
+                    df, total = run_options_scanner(
+                        symbols, api_key, secret_key, feed_name
+                    )
                     st.dataframe(df, use_container_width=True)
                     if total:
                         st.metric(

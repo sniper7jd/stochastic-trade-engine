@@ -4,8 +4,6 @@ Python toolkit for **statistical mean-reversion trading**, friction-aware backte
 
 Primary host: **[Streamlit Community Cloud](https://streamlit.io/cloud)** via **`streamlit_app.py`** (repo root). GitHub Pages is not the primary host (interactive Python + live API calls).
 
-> **Looking for `streamlit_app.py`?** It lives on branch [`cursor/streamlit-hosting-50d4`](https://github.com/sniper7jd/stochastic-trade-engine/tree/cursor/streamlit-hosting-50d4) ([PR #1](https://github.com/sniper7jd/stochastic-trade-engine/pull/1)). It is **not** on `main` until that PR is merged. On Streamlit Cloud, set **Branch** to `cursor/streamlit-hosting-50d4` (or merge first, then use `main`).
-
 ## Features
 
 | Area | Scripts / UI |
@@ -50,7 +48,7 @@ python stream.py            # live VWAP WebSocket
    | Setting | Value |
    | --- | --- |
    | **Repository** | `sniper7jd/stochastic-trade-engine` |
-   | **Branch** | `cursor/streamlit-hosting-50d4` until PR #1 merges; then `main` |
+   | **Branch** | `main` |
    | **Main file path** | `streamlit_app.py` |
    | **Python version** | **3.11** (Advanced settings — required; Cloud ignores `runtime.txt`) |
 
@@ -59,6 +57,8 @@ python stream.py            # live VWAP WebSocket
    ```toml
    ALPACA_API_KEY = "your_key"
    ALPACA_SECRET_KEY = "your_secret"
+   # Optional — defaults to iex (free). Only set sip if your Alpaca plan includes SIP.
+   # ALPACA_DATA_FEED = "iex"
    ```
 
 5. **Deploy**. After the app URL is live, set the GitHub repo homepage to that URL (About → Website), e.g. `https://YOUR_APP.streamlit.app`.
@@ -67,15 +67,26 @@ python stream.py            # live VWAP WebSocket
 
 Pinned deps (`streamlit==1.41.1`, `pandas==2.2.3`, `numpy==2.1.3`, `alpaca-py==0.40.1`) are validated for **Python 3.11**. Community Cloud defaults can be newer (e.g. 3.12+); pick **3.11** in Advanced settings so installs stay compatible. Cloud does **not** read `runtime.txt` / `.python-version` for the runtime — the UI dropdown is the source of truth. `.python-version` in this repo is for local tooling only.
 
+### Data feed (IEX vs SIP)
+
+Equity bars and underlying quotes in `streamlit_app.py` request **`feed=iex` by default**. Free/basic Alpaca keys cannot query recent SIP (`subscription does not permit querying recent SIP data`). No extra secret is required for the free plan.
+
+| `ALPACA_DATA_FEED` | When to use |
+| --- | --- |
+| `iex` (default) | Free / basic Alpaca — use this |
+| `delayed_sip` | If your plan allows delayed SIP |
+| `sip` | Paid real-time SIP subscription only |
+
 ### Secrets / env the Cloud app needs
 
 | Name | Required for | Notes |
 | --- | --- | --- |
 | `ALPACA_API_KEY` | Equity, backtest, GBM, scanner | Paper or live data key |
 | `ALPACA_SECRET_KEY` | Same | Never commit; use Streamlit Secrets or `.env` |
+| `ALPACA_DATA_FEED` | Optional | Defaults to `iex`. Set `sip` / `delayed_sip` only with a matching subscription |
 
 - **Taylor approx** tab works with no secrets.
-- Options scanner needs Alpaca options market-data access on the key.
+- Options scanner needs Alpaca options market-data access on the key (separate from SIP).
 - Prefer a paper/data-only key for a public Cloud app.
 
 ## Project layout
