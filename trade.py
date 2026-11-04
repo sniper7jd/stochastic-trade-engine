@@ -13,14 +13,14 @@ trade_client = TradingClient(api_key=api_key, secret_key=secret_key, paper=True)
 
 # 2. Build the order request
 order_details = MarketOrderRequest(
-    symbol="V",
+    symbol="AMD",
     qty=1,
     side=OrderSide.BUY,
     time_in_force=TimeInForce.DAY
 )
 
 # 3. Submit the order to the paper exchange
-print("Submitting market order for 1 share of AAPL...")
+print(f"Submitting market order for 1 share of {order_details.symbol}...")
 market_order = trade_client.submit_order(order_data=order_details)
 
 # 4. Print the confirmation
