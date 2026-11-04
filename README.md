@@ -100,6 +100,10 @@ requirements.txt      # Pinned deps for Streamlit Cloud
 *.py                  # CLI research & trading scripts
 ```
 
+## Contributing
+
+Commit with your own GitHub name and email (`git config user.name` / `user.email`) so the repository contributors list reflects the people who own the project.
+
 ## License
 
 Use and modify at your own risk. This is research / educational software, not investment advice. Paper-trade before considering live capital.
